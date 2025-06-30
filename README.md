@@ -30,9 +30,39 @@ Here're some of the project's best features:
 ```
 git clone https://github.com/D-Majumder/News-Dash
 ```
+<p>2. Set up the Backend:</p>
 
-  
-  
+```
+- Navigate to the /server directory.
+- Follow the instructions in the server/README.md file to install dependencies, set up your .env file with your secret keys, and start the server.
+```
+<p>3. Set up the Frontend:</p>
+
+```
+- Navigate to the /client directory.
+- Install dependencies: npm install
+- Start the React application: npm start
+
+The frontend will open at http://localhost:3000 and will automatically connect to your local backend server running on port 5000.
+```
+<p>4.  Environment Variables:</p>
+
+```
+-The backend requires a .env file in the /server directory. Create this file by copying the .env.example file and filling in your secret keys.
+/*/.env
+# Get your key from [https://gnews.io/](https://gnews.io/)
+GNEWS_API_KEY=PASTE_YOUR_GNEWS_API_KEY_HERE
+
+# Get your key from [https://ai.google.dev/](https://ai.google.dev/)
+GEMINI_API_KEY=PASTE_YOUR_GEMINI_API_KEY_HERE
+
+# Get your connection string from MongoDB Atlas
+MONGO_URI=PASTE_YOUR_MONGODB_CONNECTION_STRING_HERE
+
+# Make up any random, secret phrase for signing JWTs
+JWT_SECRET=YOUR_RANDOM_SECRET_STRING_GOES_HERE
+```
+
 <h2>💻 Built with</h2>
 
 Technologies used in the project:
