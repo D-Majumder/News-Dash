@@ -3,9 +3,7 @@
   
   base = "client"
   
-
-  publish = "client/build"
-
+  publish = "build"
 [[redirects]]
   from = "/*"
   to = "/index.html"
