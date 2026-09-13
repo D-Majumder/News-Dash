@@ -1,88 +1,64 @@
-<h1 align="center" id="title">News-Dash</h1>
+# News-Dash
 
-<p align="center"><img src="https://socialify.git.ci/D-Majumder/News-Dash/image?font=Raleway&amp;forks=1&amp;issues=1&amp;language=1&amp;name=1&amp;owner=1&amp;pattern=Floating+Cogs&amp;pulls=1&amp;stargazers=1&amp;theme=Auto" alt="project-image"></p>
+A full-stack news reader with account-based summary saving, built on the MERN stack.
 
-<p id="description">A full-stack news application built with the MERN stack (MongoDB Express React Node.js). Features real-time news fetching from the GNews API AI-powered article summarization via Google's Gemini and secure user authentication with JWT. Users can browse search and save AI-generated summaries to their personal dashboard.</p>
+## Overview
 
-<p align="center"><img src="https://img.shields.io/badge/React_Js-Am_Dumb-blue" alt="shields"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="shields"><img src="https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&amp;logo=react&amp;logoColor=%2361DAFB)" alt="shields"><img src="https://img.shields.io/badge/node.js-6DA55F?style=for-the-badge&amp;logo=node.js&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/express.js-%23404d59.svg?style=for-the-badge&amp;logo=express&amp;logoColor=%2361DAFB" alt="shields"><img src="https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&amp;logo=mongodb&amp;logoColor=white" alt="shields"><img src="https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&amp;logo=tailwind-css&amp;logoColor=white" alt="shields"></p>
+News-Dash fetches live news through the GNews API and generates article summaries using Google's Gemini API. It has an Express/MongoDB backend and a React frontend. Signed-in users can save generated summaries to a personal account and view them later on a dashboard.
 
-<h2>🚀 Demo</h2>
+## Features
 
-[https://dm-newsdash.netlify.app/](https://dm-newsdash.netlify.app/)
+- Browse and filter news articles by category, sourced from the GNews API
+- Keyword search across articles
+- AI-generated article summaries, produced via Google's Gemini API (gemini-1.5-flash-latest)
+- Save a summary to your account and retrieve it later on your dashboard (requires sign-in)
+- JWT-based signup/login, with passwords hashed via bcrypt
 
-  
-  
-<h2>🧐 Features</h2>
+## Tech stack
 
-Here're some of the project's best features:
+- Frontend: React 18, Tailwind CSS, Create React App
+- Backend: Node.js, Express 5, MongoDB (Mongoose)
+- External APIs: GNews (news data), Google Gemini (gemini-1.5-flash-latest, summarization)
+- Auth: JSON Web Tokens (jsonwebtoken), bcryptjs for password hashing
 
-*   Live News Feed: The app fetches and displays up-to-the-minute news articles from a live global news API (GNews).
-*   Dynamic Content Filtering: Users can instantly filter the news feed by clicking on various categories like "Business" "Technology" or "Sports."
-*   Keyword Search: A fully functional search bar allows users to find articles on any topic they choose.
-*   Trending News Section: A dedicated "Trending" tab shows the most important breaking headlines.
-*   Interactive Article Cards: A clean grid-based layout of news articles that are interactive on hover.
-*   Detailed Article View: Clicking an article opens a modal with more details including a description and a direct link to the original source.
+## Setup
 
-<h2>🛠️ Installation Steps:</h2>
+Clone the repository:
 
-<p>1. Clone the repository:</p>
+    git clone https://github.com/D-Majumder/News-Dash
 
-```
-git clone https://github.com/D-Majumder/News-Dash
-```
-<p>2. Set up the Backend:</p>
+### Backend
 
-```
-- Navigate to the /server directory.
-- Follow the instructions in the server/README.md file to install dependencies, set up your .env file with your secret keys, and start the server.
-```
-<p>3. Set up the Frontend:</p>
+    cd server
+    npm install
 
-```
-- Navigate to the /client directory.
-- Install dependencies: npm install
-- Start the React application: npm start
+Create a .env file in server/ with the following four variables:
 
-The frontend will open at http://localhost:3000 and will automatically connect to your local backend server running on port 5000.
-```
-<p>4.  Environment Variables:</p>
+    MONGO_URI=<your MongoDB connection string>
+    JWT_SECRET=<any secret string used to sign tokens>
+    GNEWS_API_KEY=<your GNews API key>
+    GEMINI_API_KEY=<your Gemini API key>
 
-```
--The backend requires a .env file in the /server directory. Create this file by copying the .env.example file and filling in your secret keys.
-/*/.env
-# Get your key from [https://gnews.io/](https://gnews.io/)
-GNEWS_API_KEY=PASTE_YOUR_GNEWS_API_KEY_HERE
+Start the server:
 
-# Get your key from [https://ai.google.dev/](https://ai.google.dev/)
-GEMINI_API_KEY=PASTE_YOUR_GEMINI_API_KEY_HERE
+    npm start
 
-# Get your connection string from MongoDB Atlas
-MONGO_URI=PASTE_YOUR_MONGODB_CONNECTION_STRING_HERE
+### Frontend
 
-# Make up any random, secret phrase for signing JWTs
-JWT_SECRET=YOUR_RANDOM_SECRET_STRING_GOES_HERE
-```
+    cd client
+    npm install
+    npm start
 
-<h2>💻 Built with</h2>
+By default, the client points at a deployed backend at https://news-dash-backend.onrender.com rather than localhost. To run against your own local backend instead, update the API_BASE_URL constant in client/src/App.js.
 
-Technologies used in the project:
+## Live demo
 
-*   React
-*   Tailwind CSS
-*   Node.js
-*   Express.js
-*   Axios
-*   MongoDB
-*   Mongoose
-*   JSON Web Tokens
-*   bcrypt.js
-*   dotenv
-*   Google Gemini API
-*   GNews API
-*   Netlify
-*   Render
-*   Git & GitHub
+https://dm-newsdash.netlify.app/
 
-<h2>🛡️ License:</h2>
+## Limitations
 
-This project is licensed under the GNU
+The backend is hosted on Render's free tier, which spins down after a period of inactivity. At the time of this writing, a direct request to the backend did not receive a response within 45 seconds. This may reflect a cold-start delay on Render's free tier, or the service being temporarily unavailable — it is a point-in-time observation, not a claim that the backend is permanently down. The live demo above may be slow to load data, or may show an error, until the backend has fully restarted.
+
+## License
+
+See LICENSE for terms.
