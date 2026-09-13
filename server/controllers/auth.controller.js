@@ -4,8 +4,11 @@ const User = require('../models/User.model');
 
 exports.signup = async (req, res) => {
     const { username, password } = req.body;
+    if (typeof username !== 'string' || typeof password !== 'string') {
+        return res.status(400).json({ error: 'Invalid request.' });
+    }
     try {
-        let user = await User.findOne({ username });
+        let user = await User.findOne({ username: { $eq: username } });
         if (user) return res.status(400).json({ error: 'User already exists.' });
 
         user = new User({ username, password });
@@ -25,8 +28,11 @@ exports.signup = async (req, res) => {
 
 exports.login = async (req, res) => {
     const { username, password } = req.body;
+    if (typeof username !== 'string' || typeof password !== 'string') {
+        return res.status(400).json({ error: 'Invalid request.' });
+    }
     try {
-        const user = await User.findOne({ username });
+        const user = await User.findOne({ username: { $eq: username } });
         if (!user) return res.status(400).json({ error: 'Invalid credentials.' });
 
         const isMatch = await bcrypt.compare(password, user.password);
