@@ -25,7 +25,7 @@ News-Dash fetches live news through the GNews API and generates article summarie
 
 Clone the repository:
 
-    git clone https://github.com/D-Majumder/News-Dash
+    git clone https://github.com/D-Majumder/news-dash
 
 ### Backend
 
