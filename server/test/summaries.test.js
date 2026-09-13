@@ -35,10 +35,23 @@ function tokenFor(userId) {
     return jwt.sign({ user: { id: userId } }, process.env.JWT_SECRET, { expiresIn: '5h' });
 }
 
+// summariesRoutes now has TWO stacked limiters: summariesIpLimiter (100/15min,
+// keyed by CF-Connecting-IP/req.ip, runs before authMiddleware) and
+// summariesLimiter (60/15min, keyed by req.user.id, runs after authMiddleware).
+// Both are singletons for the whole test process (require() caches the router
+// module), so every sub-test below tags its requests with its own unique
+// CF-Connecting-IP value -- otherwise an unrelated sub-test's requests would
+// silently consume the outer IP limiter's budget for a later sub-test that is
+// specifically trying to test the INNER per-user limiter, producing a 429 for
+// the wrong reason.
+function cfTagHeaders(tag, extra = {}) {
+    return { 'cf-connecting-ip': tag, ...extra };
+}
+
 // SavedArticle.prototype.save and SavedArticle.find are the only two
 // Mongoose calls in summaries.controller.js; both need a live database
-// connection in production. Neither is available in this environment,
-// so both are stubbed against an in-memory array, per user id.
+// connection in production. Neither is available in this environment, so
+// both are stubbed against an in-memory array, per user id.
 function installFakeSavedArticleStore() {
     const byUser = new Map();
     const originalSave = SavedArticle.prototype.save;
@@ -71,6 +84,8 @@ test('summaries: authenticated access, independent per-user budgets', async (t) 
     const app = buildApp();
     const server = await startServer(app);
     const url = baseUrl(server);
+    let n = 0;
+    const nextTag = () => `test-summaries-basic-${n++}`;
 
     t.after(() => {
         server.close();
@@ -83,9 +98,10 @@ test('summaries: authenticated access, independent per-user budgets', async (t) 
     const tokenB = tokenFor(userBId);
 
     await t.test('normal authenticated save + list works', async () => {
+        const tag = nextTag();
         const saveRes = await fetch(`${url}/api/summaries`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
+            headers: cfTagHeaders(tag, { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` }),
             body: JSON.stringify({
                 title: 'Test article',
                 source: 'Test source',
@@ -96,7 +112,7 @@ test('summaries: authenticated access, independent per-user budgets', async (t) 
         assert.equal(saveRes.status, 201);
 
         const listRes = await fetch(`${url}/api/summaries`, {
-            headers: { Authorization: `Bearer ${tokenA}` },
+            headers: cfTagHeaders(tag, { Authorization: `Bearer ${tokenA}` }),
         });
         assert.equal(listRes.status, 200);
         const list = await listRes.json();
@@ -105,16 +121,17 @@ test('summaries: authenticated access, independent per-user budgets', async (t) 
     });
 
     await t.test('no token -> 401, unaffected by rate limiting', async () => {
-        const res = await fetch(`${url}/api/summaries`);
+        const res = await fetch(`${url}/api/summaries`, { headers: cfTagHeaders(nextTag()) });
         assert.equal(res.status, 401);
     });
 
-    await t.test('POST /api/summaries: 60 requests allowed, 61st is rate-limited (429)', async () => {
+    await t.test('POST /api/summaries: 60 requests allowed, 61st is rate-limited (429) by the per-user limiter', async () => {
+        const tag = nextTag();
         let last;
         for (let i = 0; i < 61; i++) {
             last = await fetch(`${url}/api/summaries`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` },
+                headers: cfTagHeaders(tag, { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenA}` }),
                 body: JSON.stringify({
                     title: `Article ${i}`,
                     source: 'Test source',
@@ -126,24 +143,127 @@ test('summaries: authenticated access, independent per-user budgets', async (t) 
         assert.equal(last.status, 429);
     });
 
-    await t.test('GET /api/summaries: 60 requests allowed, 61st is rate-limited (429)', async () => {
+    await t.test('GET /api/summaries: 60 requests allowed, 61st is rate-limited (429) by the per-user limiter', async () => {
+        const tag = nextTag();
         let last;
         for (let i = 0; i < 61; i++) {
             last = await fetch(`${url}/api/summaries`, {
-                headers: { Authorization: `Bearer ${tokenB}` },
+                headers: cfTagHeaders(tag, { Authorization: `Bearer ${tokenB}` }),
             });
         }
-        assert.equal(last.status, 429, 'POST and GET must share one 60/15min budget per user, so this 61st combined request is limited');
+        assert.equal(last.status, 429, 'POST and GET must share one 60/15min per-user budget, so this 61st combined request is limited');
     });
 
     await t.test('a third, previously-unused user still has a full independent budget', async () => {
         const userCId = new mongoose.Types.ObjectId().toString();
         const tokenC = tokenFor(userCId);
         const res = await fetch(`${url}/api/summaries`, {
-            headers: { Authorization: `Bearer ${tokenC}` },
+            headers: cfTagHeaders(nextTag(), { Authorization: `Bearer ${tokenC}` }),
         });
         assert.notEqual(res.status, 429, 'a fresh user id must not inherit another user\'s exhausted budget');
         assert.equal(res.status, 200);
+    });
+});
+
+test('summaries: pre-auth IP limiter throttles unauthenticated/invalid-token flooding', async (t) => {
+    const fake = installFakeSavedArticleStore();
+    const app = buildApp();
+    const server = await startServer(app);
+    const url = baseUrl(server);
+
+    t.after(() => {
+        server.close();
+        fake.restore();
+    });
+
+    await t.test('flood of requests with no token: first 100 get 401, 101st is rate-limited by summariesIpLimiter (429)', async () => {
+        const tag = 'test-summaries-ip-limiter-no-token';
+        const statuses = [];
+        for (let i = 0; i < 101; i++) {
+            const res = await fetch(`${url}/api/summaries`, { headers: cfTagHeaders(tag) });
+            statuses.push(res.status);
+        }
+        assert.equal(statuses.slice(0, 100).every((s) => s === 401), true, 'requests within the IP budget must reach authMiddleware and be rejected as 401 (no token), not 429');
+        assert.equal(statuses[100], 429, 'the 101st request from the same identity must be blocked by summariesIpLimiter before authMiddleware runs');
+    });
+
+    await t.test('flood of requests with an invalid token also consumes the same outer IP budget', async () => {
+        const tag = 'test-summaries-ip-limiter-bad-token';
+        const statuses = [];
+        for (let i = 0; i < 101; i++) {
+            const res = await fetch(`${url}/api/summaries`, {
+                headers: cfTagHeaders(tag, { Authorization: 'Bearer not-a-real-token' }),
+            });
+            statuses.push(res.status);
+        }
+        assert.equal(statuses.slice(0, 100).every((s) => s === 401), true, 'requests within the IP budget must reach authMiddleware and be rejected as 401 (invalid token), not 429');
+        assert.equal(statuses[100], 429, 'the 101st request must be blocked by summariesIpLimiter, proving the pre-auth JWT-verification path is now throttled');
+    });
+});
+
+test('summaries: outer IP limiter and inner per-user limiter do not interfere incorrectly', async (t) => {
+    const fake = installFakeSavedArticleStore();
+    const app = buildApp();
+    const server = await startServer(app);
+    const url = baseUrl(server);
+
+    t.after(() => {
+        server.close();
+        fake.restore();
+    });
+
+    await t.test('a legitimate authenticated user well within both budgets is never rate-limited', async () => {
+        const tag = 'test-summaries-no-interference';
+        const userId = new mongoose.Types.ObjectId().toString();
+        const token = tokenFor(userId);
+        for (let i = 0; i < 10; i++) {
+            const res = await fetch(`${url}/api/summaries`, {
+                headers: cfTagHeaders(tag, { Authorization: `Bearer ${token}` }),
+            });
+            assert.equal(res.status, 200, `request ${i} must succeed -- 10 requests is far under both the 100/15min IP limit and the 60/15min per-user limit`);
+        }
+    });
+
+    await t.test('exhausting the outer IP limiter blocks even a request with a valid token, before it reaches the inner limiter', async () => {
+        const tag = 'test-summaries-outer-blocks-valid-token';
+        const userId = new mongoose.Types.ObjectId().toString();
+        const token = tokenFor(userId);
+        // Exhaust the 100-request outer IP budget using unauthenticated requests.
+        for (let i = 0; i < 100; i++) {
+            await fetch(`${url}/api/summaries`, { headers: cfTagHeaders(tag) });
+        }
+        // The 101st request, even with a fully valid token, must still be
+        // blocked by the outer limiter -- it never reaches authMiddleware or
+        // the inner per-user limiter at all.
+        const res = await fetch(`${url}/api/summaries`, {
+            headers: cfTagHeaders(tag, { Authorization: `Bearer ${token}` }),
+        });
+        assert.equal(res.status, 429, 'a valid token does not bypass the outer, pre-auth IP limiter');
+    });
+
+    await t.test('two different users behind two different IPs never affect each other\'s outer budget', async () => {
+        const userXId = new mongoose.Types.ObjectId().toString();
+        const userYId = new mongoose.Types.ObjectId().toString();
+        const tokenX = tokenFor(userXId);
+        const tokenY = tokenFor(userYId);
+
+        // Exhaust user X's outer IP budget.
+        for (let i = 0; i < 100; i++) {
+            await fetch(`${url}/api/summaries`, {
+                headers: cfTagHeaders('test-summaries-outer-x', { Authorization: `Bearer ${tokenX}` }),
+            });
+        }
+        const exhaustedX = await fetch(`${url}/api/summaries`, {
+            headers: cfTagHeaders('test-summaries-outer-x', { Authorization: `Bearer ${tokenX}` }),
+        });
+        assert.equal(exhaustedX.status, 429);
+
+        // A different identity (different CF-Connecting-IP) must be unaffected.
+        const resY = await fetch(`${url}/api/summaries`, {
+            headers: cfTagHeaders('test-summaries-outer-y', { Authorization: `Bearer ${tokenY}` }),
+        });
+        assert.notEqual(resY.status, 429, 'a different CF-Connecting-IP identity must not inherit another identity\'s exhausted outer budget');
+        assert.equal(resY.status, 200);
     });
 });
 
